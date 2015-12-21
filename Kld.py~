@@ -1,0 +1,64 @@
+import numpy as np, pyfits as py, cPickle
+from scipy.interpolate import splrep, splev, splint
+from itertools import product
+import pylab as pl
+
+ra,dec,R,vlos,rmaxes,rhalfs,Emaxes,Ehalfs = np.load('/data/ljo31/NWE/energies.npy').T
+
+# for each object, construct D_KL
+# start with object 0
+#x = np.linspace(-1*10**6.1,2e6,15000)
+x1 = np.logspace(4.,6.5,8000)
+x = np.concatenate((x1[::-1]*-1., x1))
+#E = Emaxes[0]
+#dE2 = ((Emaxes[0]-Ehalfs[0])*50.)**2. # giving it a big uncertainty for now
+#lp = -0.5*(x-E)**2./dE2 - 0.5*np.log(2.*np.pi*dE2)
+#lq = -0.5*(x-Emaxes[1])**2./((Emaxes[1]-Ehalfs[1])*500)**2. - 0.5*np.log(2.*np.pi*(Emaxes[1]-Ehalfs[1])**2.*500**2.)
+#pl.figure()
+#pl.plot(x,np.exp(lp))
+#pl.plot(x,np.exp(lq))
+
+
+lpfunc = lambda x,E,dE2: -0.5*(x-E)**2./dE2 - 0.5*np.log(2.*np.pi*dE2)
+lps = np.zeros((Emaxes.size,x.size))
+for i in range(Emaxes.size):
+    E,dE2 = Emaxes[i], 0.44*rmaxes[i]**2. * vlos[i]**2. / (rmaxes[i]**2. - R[i]**2.)
+    print dE2, E
+    dE2 = dE2**2.
+    lps[i] = lpfunc(x,E,dE2)
+
+#pl.figure()
+#pl.plot(x,np.exp(lps).T)
+
+#np.save('/data/ljo31/NWE/lps_1D_v2',lps) # just energies
+
+
+
+#lps = np.load('/data/ljo31/NWE/lps_1D_v2.npy')
+    
+Dkls = np.zeros((Emaxes.size,Emaxes.size))
+for i,j in product(range(Emaxes.size),range(Emaxes.size)):
+    lp,lq=lps[i],lps[j]
+    func = np.exp(lp) * (lp-lq)
+    model = splrep(x,func)
+    Dkl = splint(x[0],x[-1],model)
+    Dkls[i,j] = Dkl
+    #print Dkl
+
+pl.figure()
+pl.imshow(Dkls,interpolation='nearest',origin='lower',vmax=0.5)
+pl.colorbar()
+np.save('/data/ljo31/NWE/Dkls_1D_v2',Dkls)
+pl.xlabel('galaxy index 1')
+pl.ylabel('galaxy index 2')
+pl.title('coloured by $D_{kl}$ - Gaussian model')
+
+positives = []
+for i,j in product(range(45),range(45)):
+    if i!=j:
+        if Dkls[i,j] < 5:
+            print Dkls[i,j], i, j, Emaxes[i],Emaxes[j]
+            positives.append([Dkls[i,j],Emaxes[i],Emaxes[j],i,j])
+
+#np.save('/data/ljo31/NWE/matches_gaussian',positives)
+

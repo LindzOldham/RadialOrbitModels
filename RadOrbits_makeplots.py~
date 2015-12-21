@@ -1,0 +1,64 @@
+import numpy as np, pylab as pl, pyfits as py
+from scipy.special import gamma as Gamma
+from scipy.interpolate import splrep, splev, splint
+from scipy.optimize import brentq
+from scipy import integrate
+
+# model
+alpha,gamma,Psi0,F0 = 1.13,2.41, 10**8.89, 10**-2.59
+
+
+# data
+ra,dec,cz,dist2 = np.loadtxt('/data/ljo31/CFHT/Catalogues/EDD_EVCC_clipped_20.cat',unpack=True,usecols=(0,1,2,3))
+vlos = cz - 1284. 
+# calculate 3D radial separations from M87
+ra_m87, dec_m87 =  187.7059304, 12.3911231
+ra,dec = (ra-ra_m87)*np.cos(0.5*(dec+dec_m87)), dec-dec_m87
+R = np.sqrt(ra**2 + dec**2)*0.083*3600 # in kpc
+# R<800
+ii = np.where((R<800) & (R>1))
+R,vlos = R[ii],vlos[ii]
+ii = np.where(R>200)
+R,vlos=R[ii],vlos[ii]
+
+from DensityCalc import SurfaceDensity
+Rbins,n,nerr = SurfaceDensity(R,9)
+### model
+p = (2.-gamma)/alpha + 0.5 ############## corrected
+r0 = 1.
+r = np.logspace(1,8,1000)
+S0_num = np.pi**2. * Gamma(0.5*(gamma-1.)) * Gamma((2.*gamma + alpha - 4.)/(2.*alpha)) * psi0**((gamma-2.)/alpha)
+S0_den = np.sqrt(2) * r0 * Gamma(0.5*gamma) * Gamma((gamma+alpha-2)/alpha)
+S0 = S0_num / S0_den
+SB = F0 * S0 * (r0/r)**gamma
+SBmodel = splrep(r,SB)
+SB = splev(Rbins,SBmodel)
+
+pl.figure()
+pl.plot(Rbins,n,color='CornflowerBlue',label='data')
+pl.errorbar(Rbins,n,yerr=nerr,color='CornflowerBlue',marker='o')
+pl.plot(Rbins,SB,color='Black',label='power-law fit')
+pl.xlabel('R/kpc')
+pl.ylabel('SB /kpc$^{-2}$')
+pl.legend(loc='lower left')
+
+# also velocity dispersion.
+def func(x):
+    return np.std(x)#, np.std(x)/np.sqrt(len(x))
+
+sr = np.linspace(100,1000,100)
+v02 = psi0 * Gamma(gamma/2.) * Gamma(0.5*(alpha + gamma - 1.))
+v02 /= 2. * Gamma(0.5*(gamma-1.)) * Gamma(0.5*(alpha + gamma + 2.))
+vlos2 = v02 * (r0/sr)**alpha
+pl.figure()
+pl.plot(sr,vlos2**0.5,color='Black')
+
+from scipy.stats import binned_statistic
+means,bins,ns = binned_statistic(R,vlos,statistic=func,bins=9)
+#pl.figure()
+pl.plot(bins[1:],means,'o',color='CornflowerBlue')
+pl.xlabel('R/kpc')
+pl.ylabel(r'$\sigma_{los}^2$')
+pl.title('velocity dispersion')
+pl.legend(loc='upper right')
+print ns
